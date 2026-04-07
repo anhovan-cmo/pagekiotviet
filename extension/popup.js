@@ -7,9 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('startBtn').addEventListener('click', async () => {
-    const retailer = document.getElementById('retailer').value;
-    const clientId = document.getElementById('clientId').value;
-    const clientSecret = document.getElementById('clientSecret').value;
+    const retailer = document.getElementById('retailer').value.trim();
+    const clientId = document.getElementById('clientId').value.trim();
+    const clientSecret = document.getElementById('clientSecret').value.trim();
     const statusEl = document.getElementById('status');
 
     if (!retailer || !clientId || !clientSecret) {
@@ -20,21 +20,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save credentials
     chrome.storage.local.set({ retailer, clientId, clientSecret });
-    statusEl.innerText = 'Đang lấy dữ liệu từ KiotViet...';
+    statusEl.innerText = 'Đang lấy Token từ KiotViet...';
     statusEl.style.color = 'black';
 
-    // Send message to background script to fetch data
-    chrome.runtime.sendMessage(
-      { action: 'fetchAndPost', credentials: { retailer, clientId, clientSecret } },
-      (response) => {
-        if (response && response.success) {
+    try {
+      // 1. Lấy Token
+      const tokenParams = new URLSearchParams();
+      tokenParams.append('scopes', 'PublicApi.Access');
+      tokenParams.append('grant_type', 'client_credentials');
+      tokenParams.append('client_id', clientId);
+      tokenParams.append('client_secret', clientSecret);
+
+      const tokenRes = await fetch('https://id.kiotviet.vn/connect/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: tokenParams.toString()
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        throw new Error(`Sai Client ID/Secret (Mã: ${tokenRes.status})`);
+      }
+      const tokenData = await tokenRes.json();
+
+      statusEl.innerText = 'Đang tải sản phẩm...';
+
+      // 2. Lấy Sản phẩm
+      const productsRes = await fetch('https://public.api.kiotviet.vn/products?pageSize=1', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Retailer': retailer
+        }
+      });
+
+      if (!productsRes.ok) {
+        throw new Error(`Sai tên gian hàng (Mã: ${productsRes.status})`);
+      }
+      
+      const productsData = await productsRes.json();
+      
+      if (!productsData.data || productsData.data.length === 0) {
+        throw new Error('Gian hàng chưa có sản phẩm nào.');
+      }
+
+      const product = productsData.data[0];
+      const postContent = `🔥 HÀNG MỚI VỀ 🔥\n\n📦 ${product.fullName}\n💰 Giá: ${product.basePrice.toLocaleString('vi-VN')} VNĐ\n\nInbox ngay để chốt đơn!`;
+
+      statusEl.innerText = 'Đang mở Facebook...';
+
+      // 3. Gửi lệnh sang background để mở tab Facebook
+      chrome.runtime.sendMessage(
+        { action: 'openFacebook', content: postContent },
+        (response) => {
           statusEl.innerText = 'Đã mở Facebook! Vui lòng chờ Extension tự động điền.';
           statusEl.style.color = 'green';
-        } else {
-          statusEl.innerText = 'Lỗi: ' + (response?.error || 'Không xác định');
-          statusEl.style.color = 'red';
         }
-      }
-    );
+      );
+
+    } catch (error) {
+      console.error(error);
+      statusEl.innerText = 'Lỗi: ' + error.message;
+      statusEl.style.color = 'red';
+    }
   });
 });

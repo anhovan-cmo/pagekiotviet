@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KiotViet to Facebook Auto Poster",
-  "version": "1.0",
+  "version": "1.2",
   "description": "Tự động lấy sản phẩm từ KiotViet và đăng lên Facebook cá nhân.",
   "permissions": [
     "storage",
@@ -9,8 +9,9 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://*.kiotviet.vn/*",
-    "https://*.facebook.com/*"
+    "https://id.kiotviet.vn/*",
+    "https://public.api.kiotviet.vn/*",
+    "https://www.facebook.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
