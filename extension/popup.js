@@ -1,61 +1,41 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Load saved credentials
-  chrome.storage.local.get(['retailer', 'clientId', 'clientSecret'], (result) => {
+  chrome.storage.local.get(['retailer', 'accessToken'], (result) => {
     if (result.retailer) document.getElementById('retailer').value = result.retailer;
-    if (result.clientId) document.getElementById('clientId').value = result.clientId;
-    if (result.clientSecret) document.getElementById('clientSecret').value = result.clientSecret;
+    if (result.accessToken) document.getElementById('accessToken').value = result.accessToken;
   });
 
   document.getElementById('startBtn').addEventListener('click', async () => {
     const retailer = document.getElementById('retailer').value.trim();
-    const clientId = document.getElementById('clientId').value.trim();
-    const clientSecret = document.getElementById('clientSecret').value.trim();
+    const accessToken = document.getElementById('accessToken').value.trim();
     const statusEl = document.getElementById('status');
 
-    if (!retailer || !clientId || !clientSecret) {
-      statusEl.innerText = 'Vui lòng nhập đủ thông tin KiotViet!';
+    if (!retailer || !accessToken) {
+      statusEl.innerText = 'Vui lòng nhập Tên gian hàng và Access Token!';
       statusEl.style.color = 'red';
       return;
     }
 
     // Save credentials
-    chrome.storage.local.set({ retailer, clientId, clientSecret });
-    statusEl.innerText = 'Đang lấy Token từ KiotViet...';
+    chrome.storage.local.set({ retailer, accessToken });
+    statusEl.innerText = 'Đang tải sản phẩm từ KiotViet...';
     statusEl.style.color = 'black';
 
     try {
-      // 1. Lấy Token
-      const tokenParams = new URLSearchParams();
-      tokenParams.append('scopes', 'PublicApi.Access');
-      tokenParams.append('grant_type', 'client_credentials');
-      tokenParams.append('client_id', clientId);
-      tokenParams.append('client_secret', clientSecret);
-
-      const tokenRes = await fetch('https://id.kiotviet.vn/connect/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: tokenParams.toString()
-      });
-
-      if (!tokenRes.ok) {
-        const errText = await tokenRes.text();
-        throw new Error(`Sai Client ID/Secret (Mã: ${tokenRes.status})`);
-      }
-      const tokenData = await tokenRes.json();
-
-      statusEl.innerText = 'Đang tải sản phẩm...';
-
-      // 2. Lấy Sản phẩm
+      // Gọi API lấy Sản phẩm trực tiếp bằng Token (Bỏ qua bước xin Token)
       const productsRes = await fetch('https://public.api.kiotviet.vn/products?pageSize=1', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Retailer': retailer
         }
       });
 
       if (!productsRes.ok) {
-        throw new Error(`Sai tên gian hàng (Mã: ${productsRes.status})`);
+        if (productsRes.status === 401) {
+          throw new Error('Token không hợp lệ hoặc đã hết hạn (Lỗi 401)');
+        }
+        throw new Error(`Lỗi kết nối KiotViet (Mã: ${productsRes.status})`);
       }
       
       const productsData = await productsRes.json();
@@ -69,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       statusEl.innerText = 'Đang mở Facebook...';
 
-      // 3. Gửi lệnh sang background để mở tab Facebook
+      // Gửi lệnh sang background để mở tab Facebook
       chrome.runtime.sendMessage(
         { action: 'openFacebook', content: postContent },
         (response) => {
