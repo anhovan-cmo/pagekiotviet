@@ -12,20 +12,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function handleFetchAndPost(credentials) {
   try {
-    // 1. Gọi API lấy Sản phẩm trực tiếp bằng Token
+    // 1. Lấy Access Token từ Client ID và Client Secret
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('scopes', 'PublicApi.Access');
+    tokenParams.append('grant_type', 'client_credentials');
+    tokenParams.append('client_id', credentials.clientId);
+    tokenParams.append('client_secret', credentials.clientSecret);
+
+    const tokenRes = await fetch('https://id.kiotviet.vn/connect/token', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: tokenParams.toString()
+    });
+
+    if (!tokenRes.ok) {
+      throw new Error(`Sai Client ID hoặc Client Secret (Mã lỗi: ${tokenRes.status})`);
+    }
+    
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+
+    // 2. Gọi API lấy Sản phẩm
     const productsRes = await fetch('https://public.api.kiotviet.vn/products?pageSize=1', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${credentials.accessToken}`,
-        'Retailer': credentials.retailer
+        'Authorization': `Bearer ${accessToken}`,
+        'Retailer': credentials.retailer,
+        'Accept': 'application/json'
       }
     });
 
     if (!productsRes.ok) {
-      if (productsRes.status === 401) {
-        throw new Error('Token không hợp lệ hoặc đã hết hạn (Lỗi 401)');
-      }
-      throw new Error(`Lỗi kết nối KiotViet (Mã: ${productsRes.status})`);
+      throw new Error(`Sai tên gian hàng (Retailer) (Mã lỗi: ${productsRes.status})`);
     }
     
     const productsData = await productsRes.json();
@@ -37,7 +58,7 @@ async function handleFetchAndPost(credentials) {
     const product = productsData.data[0];
     const postContent = `🔥 HÀNG MỚI VỀ 🔥\n\n📦 ${product.fullName}\n💰 Giá: ${product.basePrice.toLocaleString('vi-VN')} VNĐ\n\nInbox ngay để chốt đơn!`;
 
-    // 2. Mở tab Facebook và tự động đăng
+    // 3. Mở tab Facebook và tự động đăng
     return new Promise((resolve) => {
       chrome.tabs.create({ url: 'https://www.facebook.com/' }, (tab) => {
         chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
@@ -56,9 +77,8 @@ async function handleFetchAndPost(credentials) {
     });
 
   } catch (error) {
-    // Bắt lỗi TypeError: Failed to fetch (Lỗi mạng hoặc CORS)
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-      throw new Error('Bị chặn kết nối (CORS) hoặc sai định dạng Token. Hãy kiểm tra lại Token.');
+      throw new Error('Mất mạng hoặc KiotViet từ chối kết nối. Hãy thử lại.');
     }
     throw error;
   }

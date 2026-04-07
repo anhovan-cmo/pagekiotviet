@@ -1,31 +1,33 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Load saved credentials
-  chrome.storage.local.get(['retailer', 'accessToken'], (result) => {
+  chrome.storage.local.get(['retailer', 'clientId', 'clientSecret'], (result) => {
     if (result.retailer) document.getElementById('retailer').value = result.retailer;
-    if (result.accessToken) document.getElementById('accessToken').value = result.accessToken;
+    if (result.clientId) document.getElementById('clientId').value = result.clientId;
+    if (result.clientSecret) document.getElementById('clientSecret').value = result.clientSecret;
   });
 
   document.getElementById('startBtn').addEventListener('click', () => {
     const retailer = document.getElementById('retailer').value.trim();
-    const accessToken = document.getElementById('accessToken').value.trim();
+    const clientId = document.getElementById('clientId').value.trim();
+    const clientSecret = document.getElementById('clientSecret').value.trim();
     const statusEl = document.getElementById('status');
 
-    if (!retailer || !accessToken) {
-      statusEl.innerText = 'Vui lòng nhập Tên gian hàng và Access Token!';
+    if (!retailer || !clientId || !clientSecret) {
+      statusEl.innerText = 'Vui lòng nhập đủ 3 thông tin KiotViet!';
       statusEl.style.color = 'red';
       return;
     }
 
     // Save credentials
-    chrome.storage.local.set({ retailer, accessToken });
-    statusEl.innerText = 'Đang gửi yêu cầu lấy sản phẩm...';
+    chrome.storage.local.set({ retailer, clientId, clientSecret });
+    statusEl.innerText = 'Đang kết nối với KiotViet...';
     statusEl.style.color = 'black';
 
-    // Gửi toàn bộ việc gọi API sang background.js để tránh lỗi CORS của Popup
+    // Gửi toàn bộ việc gọi API sang background.js
     chrome.runtime.sendMessage(
       { 
         action: 'fetchProductsAndPost', 
-        credentials: { retailer, accessToken } 
+        credentials: { retailer, clientId, clientSecret } 
       },
       (response) => {
         if (chrome.runtime.lastError) {
